@@ -41,12 +41,8 @@
 
 %pre.snippet
   %code
-    &= "<script src='https://#{request.host_with_port}/token.js'></script>"
+    &= "<script src='https://#{request.host_with_port}/<instagram_name>/token.js'></script>"
 
 %p
   Your API token will be available in a global constant called
   %code InstagramToken
-
-%p
-  You can also access the token in JSON format at:
-  %a{href: "#{request.url}token.json"} #{request.url}token.json

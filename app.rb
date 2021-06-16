@@ -13,7 +13,7 @@ class App < Sinatra::Base
   # Nicer debugging in dev mode
   configure :development do
     require 'pry'
-    require "better_errors"
+    require 'better_errors'
     use BetterErrors::Middleware
     BetterErrors.application_root = __dir__
   end
@@ -22,20 +22,26 @@ class App < Sinatra::Base
   # Overall configuration - done here rather than yml files to reduce dependencies
   # -------------------------------------------------
   configure do
-    set :app_name, ENV['APP_NAME']                                                # The app needs to know its own name/url.
+    set :app_name, ENV['APP_NAME'] # The app needs to know its own name/url.
     set :app_url, ENV['APP_URL'] || "https://#{settings.app_name}.herokuapp.com"
 
     enable :cross_origin
     disable :show_exceptions
     enable :raise_errors
 
-    set :help_pages,        !(ENV['HIDE_HELP_PAGES']) || false                    # Whether to display the welcome pages or not
-    set :allow_origin,      ENV['ALLOWED_DOMAINS'] ? ENV['ALLOWED_DOMAINS'].split(' ').map{|d| "https://#{d}"} : settings.app_url # Check for a whitelist of domains, otherwise allow the herokapp domain
-    set :allow_methods,     [:get, :options]                                      # Only allow GETs and OPTION requests
+    set :help_pages,        !(ENV['HIDE_HELP_PAGES']) || false # Whether to display the welcome pages or not
+    set :allow_origin,      if ENV['ALLOWED_DOMAINS']
+                              (ENV['ALLOWED_DOMAINS'].split(' ').map do |d|
+                                 "https://#{d}"
+                               end)
+                            else
+                              settings.app_url
+                            end
+    set :allow_methods,     %i[get options] # Only allow GETs and OPTION requests
     set :allow_credentials, false                                                 # We have no need of credentials!
 
     set :default_starting_token, 'copy_token_here'                                # The 'Deploy to Heroku' button sets this environment value
-    set :js_constant_name, ENV['JS_CONSTANT_NAME'] ||'InstagramToken'             # The name of the constant used in the JS snippet
+    set :js_constant_name, ENV['JS_CONSTANT_NAME'] || 'InstagramToken' # The name of the constant used in the JS snippet
 
     # scheduled mode would be more efficient, but currently doesn't work
     # because Temporize free accounts don't support dates more than 7 days in the future
@@ -47,8 +53,10 @@ class App < Sinatra::Base
     set :user_endpoint,     'https://graph.instagram.com/me'                      # The endpoint to hit to fetch user profile
     set :media_endpoint,    'https://graph.instagram.com/me/media'                # The endpoint to hit to fetch the user's media
 
-    set :refresh_webhook, (ENV['TEMPORIZE_URL'] ? true : false)                   # Check if Temporize is configured
-    set :webhook_secret, ENV['WEBHOOK_SECRET']                                    # The secret value used to sign external, incoming requests
+    set :refresh_webhook, (ENV['WEBHOOK_SECRET'] ? true : false) # Check if Temporize is configured
+    set :webhook_secret, ENV['WEBHOOK_SECRET'] # The secret value used to sign external, incoming requests
+
+    set :logger, Logger.new(STDOUT)
   end
 
   # Make sure everything is set up before we try to do anything else
@@ -65,11 +73,6 @@ class App < Sinatra::Base
     end
   end
 
-  # -------------------------------------------------
-  # The 'hello world' pages
-  # @TODO: allow an environment var to turn this off, as it's never needed once in production
-  # -------------------------------------------------
-
   # The home page
   get '/' do
     haml(:index, layout: :'layouts/default')
@@ -78,9 +81,27 @@ class App < Sinatra::Base
   # Requested by the index page, this checks the status of the
   # refresh task and talks to Instagram to ensure everything's set up.
   get '/status' do
-    @client ||= InstagramTokenAgent::Client.new(settings)
-    check_refresh_job
-    haml(:status, layout: nil)
+    account_with_issue = ''
+    ok = InstagramTokenAgent::Store.accounts.all? do |account|
+      account_with_issue = account
+      client ||= InstagramTokenAgent::Client.new(account, settings)
+      client.username.present?
+    rescue StandardError
+      false
+    end
+
+    if ok
+      halt 201
+    else
+      logger.info("There is a problem with the token for account #{account_with_issue}")
+      halt 401
+    end
+  end
+
+  get '/:account/status' do
+    @client ||= InstagramTokenAgent::Client.new(account, settings) if InstagramTokenAgent::Store.configured?(account)
+
+    haml(:status, layout: :'layouts/default')
   end
 
   # Show the setup page - mostly for dev, this is shown automatically in production
@@ -89,16 +110,12 @@ class App < Sinatra::Base
     haml(:setup, layout: :'layouts/default')
   end
 
-  get '/instafeed' do
-    haml(:instafeed, layout: :'layouts/default')
-  end
-
   # Allow a manual refresh, but only if the previous attempt failed
-  post '/refresh' do
-    if InstagramTokenAgent::Store.success?
+  post '/:account/refresh' do
+    if InstagramTokenAgent::Store[account].success?
       halt 204
     else
-      client = InstagramTokenAgent::Client.new(settings)
+      client = InstagramTokenAgent::Client.new(account, settings)
       client.refresh
       redirect '/setup'
     end
@@ -109,14 +126,15 @@ class App < Sinatra::Base
   # This is a good candidate for a Sinatra namespace, but sinatra-contrib needs updating
   # -------------------------------------------------
 
-  #Some clients will make an OPTIONS pre-flight request before doing CORS requests
-  options '/token' do
+  # Some clients will make an OPTIONS pre-flight request before doing CORS requests
+  options '/:account/token' do
     cross_origin
 
-    response.headers["Allow"] = settings.allow_methods
-    response.headers["Access-Control-Allow-Headers"] = "X-Requested-With, X-HTTP-Method-Override, Content-Type, Cache-Control, Accept"
+    response.headers['Allow'] = settings.allow_methods
+    response.headers['Access-Control-Allow-Headers'] =
+      'X-Requested-With, X-HTTP-Method-Override, Content-Type, Cache-Control, Accept'
 
-    204 #'No Content'
+    204 # 'No Content'
   end
 
   # Return the token itself
@@ -125,26 +143,28 @@ class App < Sinatra::Base
   #  - .json
   #  - plain text (default)
   #
-  get '/token:format?' do
+  get '/:account/token:format?' do
+    account_store = InstagramTokenAgent::Store[account]
+
     # Tokens remain active even after refresh, so we can set the cache up close to FB's expiry
-    cache_control :public, max_age: InstagramTokenAgent::Store.expires - Time.now - settings.token_expiry_buffer
+    cache_control :public, max_age: account_store.expires - Time.now - settings.token_expiry_buffer
 
     cross_origin
 
     response_body = case params['format']
-    when '.js'
-      content_type 'application/javascript'
+                    when '.js'
+                      content_type 'application/javascript'
 
-      @js_constant_name = params[:const] || settings.js_constant_name;
+                      @js_constant_name = params[:const] || settings.js_constant_name
 
-      erb(:'javascript/snippet.js')
+                      erb(:'javascript/snippet.js')
 
-    when '.json'
-      content_type 'application/json'
-      json(token: InstagramTokenAgent::Store.value)
-    else
-      InstagramTokenAgent::Store.value
-    end
+                    when '.json'
+                      content_type 'application/json'
+                      json(token: account_store.value)
+                    else
+                      account_store.value
+                    end
 
     etag Digest::SHA1.hexdigest(response_body + (response.headers['Access-Control-Allow-Origin'] || '*'))
 
@@ -158,11 +178,13 @@ class App < Sinatra::Base
   # -------------------------------------------------
 
   if settings.refresh_webhook?
-    post "/hooks/refresh/:signature" do
-
-      client = InstagramTokenAgent::Client.new(settings)
-      if client.check_signature? params[:signature]
-        client.refresh
+    post '/hooks/refresh/:signature' do
+      if params[:signature] == settings.webhook_secret
+        InstagramTokenAgent::Store.accounts.each do |account|
+          client = InstagramTokenAgent::Client.new(account, settings)
+          client.refresh
+        end
+        halt 201
       else
         halt 403
       end
@@ -182,6 +204,13 @@ class App < Sinatra::Base
   end
 
   helpers do
+    def account
+      params['account']
+    end
+
+    def available_accounts
+      InstagramTokenAgent::Store.accounts
+    end
 
     # Provide some info sourced from the app.json file
     def app_info
@@ -192,6 +221,7 @@ class App < Sinatra::Base
     def configured?
       return false unless check_allowed_domains
       return false unless check_starting_token
+
       true
     end
 
@@ -200,46 +230,20 @@ class App < Sinatra::Base
       halt haml(:setup, layout: :'layouts/default') unless configured?
     end
 
-    # Find the date of the next refresh job
-    def next_refresh_date
-      if next_job = temporize_client.next_job
-        DateTime.parse(next_job['next']).strftime('%b %-d %Y, %-l:%M%P %Z')
-      else
-        nil
-      end
-    end
-
     def check_allowed_domains
-      ENV['ALLOWED_DOMAINS'].present? and !ENV['ALLOWED_DOMAINS'].match(/\*([^\.]|$)/) # Disallow including * in the allow list
+      ENV['ALLOWED_DOMAINS'].present? and !ENV['ALLOWED_DOMAINS'].match(/\*([^.]|$)/) # Disallow including * in the allow list
     end
 
     def check_starting_token
-      ENV['STARTING_TOKEN'] != settings.default_starting_token
+      ENV.keys.any? { |t| t =~ /^STARTING_TOKEN_/ }
     end
 
     def check_token_status
-      InstagramTokenAgent::Store.success? and InstagramTokenAgent::Store.value.present?
+      InstagramTokenAgent::Store.success?
     end
 
     def latest_instagram_response
       JSON.pretty_generate(JSON.parse(InstagramTokenAgent::Store.response_body))
     end
   end
-
-
-  private
-
-
-  # Check that a job has been scheduled
-  def check_refresh_job
-    return unless temporize_client.jobs.empty?
-
-    temporize_client.update!
-  end
-
-  def temporize_client
-    raise 'Refresh webhooks are not enabled' unless settings.refresh_webhook?
-    @temporize_client ||= Temporize::Scheduler.new(settings)
-  end
-
 end

@@ -24,6 +24,12 @@ GEM
     debug_inspector (0.0.3)
     dotenv (2.7.6)
     erubi (1.9.0)
+    et-orbi (1.2.4)
+      tzinfo
+    foreman (0.87.2)
+    fugit (1.4.2)
+      et-orbi (~> 1.1, >= 1.1.8)
+      raabro (~> 1.4)
     haml (5.1.2)
       temple (>= 0.8.0)
       tilt
@@ -49,6 +55,7 @@ GEM
       method_source (~> 1.0)
     puma (4.3.6)
       nio4r (~> 2.0)
+    raabro (1.4.0)
     rack (2.2.3)
     rack-cache (1.12.0)
       rack (>= 0.4)
@@ -58,6 +65,8 @@ GEM
       rack
     rake (13.0.1)
     ruby2_keywords (0.0.2)
+    rufus-scheduler (3.7.0)
+      fugit (~> 1.1, >= 1.1.6)
     sinatra (2.1.0)
       mustermann (~> 1.0)
       rack (~> 2.2)
@@ -88,6 +97,7 @@ DEPENDENCIES
   binding_of_caller
   dalli (~> 2.7, >= 2.7.10)
   dotenv
+  foreman
   haml (~> 5.0, >= 5.1.2)
   httparty (~> 0.18.0)
   memcachier (~> 0.0.2)
@@ -97,13 +107,14 @@ DEPENDENCIES
   rack-cache (~> 1.11)
   rack-cors (~> 1.1.1)
   rake (~> 13.0, >= 13.0.1)
+  rufus-scheduler
   sinatra (~> 2.0, >= 2.0.8.1)
   sinatra-activerecord (~> 2.0, >= 2.0.14)
   sinatra-contrib (~> 2.0, >= 2.0.8.1)
   sinatra-cross_origin (~> 0.4.0)
 
 RUBY VERSION
-   ruby 2.6.6p146
+   ruby 2.6.7p197
 
 BUNDLED WITH
-   2.1.2
+   2.2.17

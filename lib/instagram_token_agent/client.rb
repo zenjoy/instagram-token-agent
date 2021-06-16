@@ -2,15 +2,11 @@
 module InstagramTokenAgent
   class Client
     include HTTParty
-    attr_accessor :config
+    attr_accessor :config, :account
 
-    def initialize(settings)
+    def initialize(account, settings)
       @config = settings
-    end
-
-    # Does the provided signature match?
-    def check_signature?(check_signature)
-      check_signature == signature
+      @account = account
     end
 
     # Fetch a fresh token from the instagram API
@@ -20,23 +16,13 @@ module InstagramTokenAgent
       response = get(
         config.refresh_endpoint,
         query: query_params(grant_type: 'ig_refresh_token'),
-        headers: {"User-Agent" => "Instagram Token Agent"}
+        headers: { 'User-Agent' => 'Instagram Token Agent' }
       )
 
       if response.success?
-
-        Store.update(response['access_token'], Time.now + response['expires_in'], true, nil)
-
-        # If we're working with single-use webhooks, schedule a job for the period [token_expiry_buffer] before expiry.
-        if config.refresh_webhook? and config.token_refresh_mode == :cron
-          scheduler = Temporize::Scheduler.new(config)
-          scheduler.queue_refresh((Time.now + response['expires_in'] - config.token_expiry_buffer), signature)
-        end
-
-        true
+        Store.update(account, response['access_token'], Time.now + response['expires_in'], true, nil)
       else
-
-        Store.update(ENV['STARTING_TOKEN'], Time.now, false, response.body)
+        Store.update(account, Store[account].value, Time.now, false, response.body)
 
         false
       end
@@ -49,18 +35,7 @@ module InstagramTokenAgent
     def media
       response = get(config.media_endpoint, query: query_params(fields: 'media_url'))
       # Ew. This is gross
-      if response.success?
-        JSON.parse(response.body)['data'][0]['media_url']
-      else
-        nil
-      end
-    end
-
-    # The HMAC'd secret + initial token value
-    # It would be better to hash the current token value, but this won't work with recurring jobs, since
-    # the value needs to stay consistent.
-    def signature
-      OpenSSL::HMAC.hexdigest(OpenSSL::Digest.new('sha1'), config.webhook_secret, ENV['STARTING_TOKEN'])
+      JSON.parse(response.body)['data'][0]['media_url'] if response.success?
     end
 
     private
@@ -70,8 +45,7 @@ module InstagramTokenAgent
     end
 
     def query_params(extra_params = {})
-      {access_token: Store.value}.merge(extra_params)
+      { access_token: Store[account].value }.merge(extra_params)
     end
-
   end
 end

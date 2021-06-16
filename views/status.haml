@@ -1,4 +1,4 @@
-- if @client.username
+- if @client && @client.username
   .setup-status-ok
     %figure.instagram-preview
       %img{src: @client.media}
@@ -21,15 +21,25 @@
         %form{action: '/refresh', method: 'post'}
           %button{type: 'submit'} Fetch now
 
-      - if settings.refresh_webhook?
-        - if next_refresh_date
-          %p 🗓 Temporize is scheduled to refresh this token on #{next_refresh_date}.
-        - else
-          %p ⚠️ Temporize is set up, but no refresh task is scheduled. Check your Temporize dashboard for details.
-      - else
-        %p ⚠️ The refresh webhook service is not configured correctly. Check your Heroku add-ons dashboard.
+  .usage
+    %h3 Usage
+
+    %p To use your token, paste the following snippet into your web page:
+
+    %pre.snippet
+      %code
+        &= "<script src='https://#{request.host_with_port}/#{account}/token.js'></script>"
+
+    %p
+      Your API token will be available in a global constant called
+      %code InstagramToken
+
+    %p
+      You can also access the token in JSON format at:
+      %a{href: "#{request.host_with_port}/#{account}/token.json"} #{request.host_with_port}/#{account}/token.json
+
 
 - else
   .setup-status-error
-    %h2 ⚠️ The token agent isn't connected to a valid Instagram user account.
+    %h2= "⚠️ The token agent isn't connected to the <i>#{account}</i> Instagram user account."
     %p.note Check your starting API token is valid.

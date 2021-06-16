@@ -1,6 +1,6 @@
 source "https://rubygems.org"
 
-ruby "2.6.6"
+ruby "2.6.7"
 
 gem 'sinatra',                  '~> 2.0', '>= 2.0.8.1'
 gem 'sinatra-contrib',          '~> 2.0', '>= 2.0.8.1'
@@ -23,6 +23,8 @@ gem 'sinatra-activerecord', '~> 2.0', '>= 2.0.14'
 
 gem 'puma'
 gem 'dotenv'
+gem 'foreman'
+gem "rufus-scheduler"
 
 group :development do
   gem "better_errors"
