@@ -235,7 +235,7 @@ class App < Sinatra::Base
     end
 
     def check_starting_token
-      ENV.keys.any? { |t| t =~ /^STARTING_TOKEN_/ }
+      InstagramTokenAgent::Store.initialized? || ENV.keys.any? { |t| t =~ /^STARTING_TOKEN_/ }
     end
 
     def check_token_status
@@ -243,7 +243,14 @@ class App < Sinatra::Base
     end
 
     def latest_instagram_response
-      JSON.pretty_generate(JSON.parse(InstagramTokenAgent::Store.response_body))
+      account_with_errors = {}
+      InstagramTokenAgent::Store.accounts.each do |a|
+        unless InstagramTokenAgent::Store[a].response_body.nil?
+          account_with_errors[a] = JSON.parse(InstagramTokenAgent::Store[a].response_body)
+        end
+      end
+
+      JSON.pretty_generate(account_with_errors)
     end
   end
 end

@@ -7,12 +7,7 @@ def app
   App
 end
 
-$stdout.sync = true
-interval = ENV['REFRESH_INTERVAL'] || '7d'
-
-puts "Starting scheduler, will be refreshing tokens every #{interval}!"
-scheduler = Rufus::Scheduler.new
-scheduler.every(interval) do
+def refresh!
   puts 'Refreshing all tokens:'
   InstagramTokenAgent::Store.accounts.each do |account|
     client = InstagramTokenAgent::Client.new(account, app.settings)
@@ -23,5 +18,15 @@ scheduler.every(interval) do
     puts "- #{account}: ❌ (#{e})"
   end
 end
+
+$stdout.sync = true
+interval = ENV['REFRESH_INTERVAL'] || '7d'
+
+puts "Starting scheduler, will be refreshing tokens every #{interval}!"
+
+scheduler = Rufus::Scheduler.new
+scheduler.every(interval) { refresh! }
 puts 'doing my work...'
+
+refresh!
 scheduler.join

@@ -1,6 +1,6 @@
 source "https://rubygems.org"
 
-ruby "2.6.7"
+ruby "2.6.10"
 
 gem 'sinatra',                  '~> 2.0', '>= 2.0.8.1'
 gem 'sinatra-contrib',          '~> 2.0', '>= 2.0.8.1'

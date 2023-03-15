@@ -78,6 +78,10 @@ module InstagramTokenAgent
       data.values.all? { |token| token.success? && token.value.present? }
     end
 
+    def self.initialized?
+      data.values.any? { |token| token.success? && token.value.present? }
+    end
+
     def self.configured?(account)
       Array(accounts).include?(account)
     end
